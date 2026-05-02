@@ -1,1 +1,47 @@
+name: ESP32 Single BIN Generator
 
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          sudo mv bin/arduino-cli /usr/local/bin/
+
+      - name: Setup ESP32 Core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install Libraries
+        run: |
+          arduino-cli lib install "LiquidCrystal I2C"
+
+      - name: Compile Sketch
+        run: |
+          # We compile the folder 'lcd_test' and dump outputs into 'build_out'
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32 \
+            --output-dir build_out \
+            ./lcd_test
+
+      - name: Merge to Single Binary
+        run: |
+          pip install esptool
+          # Using explicit filenames to prevent wildcard errors
+          esptool.py --chip esp32 merge_bin -o adeoye_firmware.bin \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000 build_out/lcd_test.ino.bootloader.bin \
+            0x8000 build_out/lcd_test.ino.partitions.bin \
+            0x10000 build_out/lcd_test.ino.bin
+
+      - name: Upload Finished File
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-esp32-bin
+          path: adeoye_firmware.bin
